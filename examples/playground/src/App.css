@@ -86,3 +86,12 @@ pre { background: #f6f7fb; padding: 16px; border-radius: 7px; overflow: auto; ma
   .panel-heading, .filter-bar { padding-left: 14px; padding-right: 14px; }
   .inspector summary span { display: block; margin: 6px 0 0; }
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

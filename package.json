@@ -7,6 +7,7 @@
   "engines": { "node": ">=22.18.0" },
   "scripts": {
     "dev": "npm run dev --workspace=fluentui-prompts-playground",
+    "demo": "npm run dev:demo --workspace=fluentui-prompts-playground",
     "build": "npm run build --workspace=@fluentui-contrib/react-prompts && npm run build --workspace=fluentui-prompts-playground",
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint packages examples",

@@ -113,3 +113,35 @@ test('renders a clearly labeled test-fixture answer and preserves its context sn
   expect(current.selectedRowCount).toBe(0);
   expect(current.filters).toEqual({});
 });
+
+test('opens a row summary from the grid, then refreshes and reports provider errors', async ({ page }) => {
+  let calls = 0;
+  await page.route('**/api/summary', async (route) => {
+    calls += 1;
+    expect(route.request().postDataJSON()).toEqual({ rowId: 'order-001' });
+    if (calls === 2) {
+      await route.fulfill({ status: 502, json: { error: { code: 'PROVIDER_REJECTED', message: 'Browser fixture: provider rejected the request.' } } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        id: `test-fixture-${calls}`, rowId: 'order-001', model: 'test-fixture-not-a-live-provider',
+        summary: 'Browser test fixture summary for order-001.', highlights: ['Fixture highlight'],
+      },
+    });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Summarize order-001', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Browser test fixture summary for order-001.')).toBeVisible();
+  await expect(dialog.getByText('Fixture highlight')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Refresh' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('provider rejected');
+  await dialog.getByRole('button', { name: 'Refresh' }).click();
+  await expect(dialog.getByTestId('row-summary')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Good summary' }).click();
+  await expect(dialog.getByRole('button', { name: 'Good summary' })).toHaveAttribute('aria-pressed', 'true');
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText('0 selected across all filters')).toBeVisible();
+});

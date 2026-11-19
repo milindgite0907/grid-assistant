@@ -89,10 +89,30 @@ export const healthSchema = z.object({
   status: z.literal('ok'),
   configured: z.boolean(),
   model: z.string().nullable(),
+  provider: z.enum(['openai-compatible', 'json-http', 'demo']),
   providerHost: z.string().nullable(),
   missing: z.array(z.string()),
 });
 export type Health = z.infer<typeof healthSchema>;
+
+export const rowSummaryRequestSchema = z.object({
+  rowId: z.string().trim().min(1).max(64),
+}).strict();
+export type RowSummaryRequest = z.infer<typeof rowSummaryRequestSchema>;
+
+// What the model must return. Providers differ; this JSON shape does not.
+export const rowSummaryOutputSchema = z.object({
+  summary: z.string().trim().min(1).max(2000),
+  highlights: z.array(z.string().trim().min(1).max(300)).max(8).default([]),
+});
+
+export const rowSummaryResponseSchema = rowSummaryOutputSchema.extend({
+  id: z.string(),
+  rowId: z.string(),
+  model: z.string(),
+  warning: z.string().optional(),
+});
+export type RowSummaryResponse = z.infer<typeof rowSummaryResponseSchema>;
 
 export const chatResponseSchema = z.object({
   id: z.string(),

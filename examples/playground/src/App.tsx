@@ -8,18 +8,19 @@ import {
   DataGrid, DataGridBody, DataGridCell, DataGridHeader, DataGridHeaderCell, DataGridRow,
 } from '@fluentui-contrib/react-data-grid-react-window';
 import type { DataGridProps, RowRenderer } from '@fluentui-contrib/react-data-grid-react-window';
-import { PromptSparksMenu } from '@fluentui-contrib/react-prompts';
+import { PromptSparksMenu, RowSummaryDialog } from '@fluentui-contrib/react-prompts';
+import { SparkleRegular } from '@fluentui/react-icons';
 import type { PromptContext, PromptDefinition, PromptSubmission } from '@fluentui-contrib/react-prompts';
 import { z } from 'zod';
 import {
   chatRequestSchema, chatResponseSchema, errorSchema, healthSchema, ordersSchema,
-  promptsSchema, regionSchema, statusSchema,
+  promptsSchema, regionSchema, rowSummaryResponseSchema, statusSchema,
 } from '../shared/contracts';
 import type { ChatRequest, ChatResponse, GridFilters, Health, Order } from '../shared/contracts';
 import './App.css';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-const columns = [
+const dataColumns = [
   createTableColumn<Order>({
     columnId: 'id', compare: (a, b) => a.id.localeCompare(b.id),
     renderHeaderCell: () => 'Order', renderCell: (order) => <span className="order-id">{order.id}</span>,
@@ -46,6 +47,17 @@ const columns = [
     renderHeaderCell: () => 'Amount', renderCell: (order) => money.format(order.amount),
   }),
 ];
+
+// A compare function without parameters keeps this action column unsortable.
+const summaryColumn = (open: (order: Order) => void) => createTableColumn<Order>({
+  columnId: 'summary', compare: () => 0,
+  renderHeaderCell: () => <span className="visually-hidden">Summary</span>,
+  renderCell: (order) => (
+    <Button size="small" appearance="subtle" icon={<SparkleRegular />} aria-label={`Summarize ${order.id}`}
+      onClick={(event) => { event.stopPropagation(); open(order); }}
+      onKeyDown={(event) => event.stopPropagation()}>Summary</Button>
+  ),
+});
 
 const renderRow: RowRenderer<Order> = ({ item, rowId }, style) => (
   <DataGridRow<Order>
@@ -95,6 +107,8 @@ function Playground(): React.ReactElement {
   const [question, setQuestion] = React.useState('');
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [busy, setBusy] = React.useState(false);
+  const [summaryOrder, setSummaryOrder] = React.useState<Order>();
+  const columns = React.useMemo(() => [...dataColumns, summaryColumn(setSummaryOrder)], []);
   const [submissionError, setSubmissionError] = React.useState('');
   const submitting = React.useRef(false);
   const sequence = React.useRef(0);
@@ -193,9 +207,11 @@ function Playground(): React.ReactElement {
       {!loading && !loadError && health && (
         <div className={`notice ${health.configured ? 'connected' : ''}`}>
           <strong>{health.configured ? `Connected to ${health.providerHost} / ${health.model}` : 'Your grid is ready. Connect an AI provider to get answers.'}</strong>
-          <span>{health.configured
-            ? 'Requests use your configured endpoint. Each question is independent.'
-            : `Set ${health.missing.join(', ')} in the backend .env file, restart the API, then refresh.`}</span>
+          <span>{health.provider === 'demo'
+            ? 'Demo mode: answers come from a local rule-based responder, not an AI model. Set AI_PROVIDER in .env to connect a real one.'
+            : health.configured
+              ? 'Requests use your configured endpoint. Each question is independent.'
+              : `Set ${health.missing.join(', ')} in the backend .env file, restart the API, then refresh.`}</span>
           <Button size="small" onClick={() => setReload((value) => value + 1)}>Refresh connection</Button>
         </div>
       )}
@@ -312,6 +328,17 @@ function Playground(): React.ReactElement {
           </form>
         </aside>
       </main>
+      <RowSummaryDialog
+        open={!!summaryOrder}
+        title={summaryOrder ? `Order ${summaryOrder.id} · ${summaryOrder.customer}` : 'Order summary'}
+        onDismiss={() => setSummaryOrder(undefined)}
+        loadSummary={(signal) => api('/api/summary', rowSummaryResponseSchema, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rowId: summaryOrder?.id }),
+          signal,
+        })}
+      />
     </div>
   );
 }

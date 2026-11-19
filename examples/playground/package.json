@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "concurrently --kill-others --names api,web \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --env-file-if-exists=.env --watch server/index.ts",
+    "dev:demo": "concurrently --kill-others --names api,web \"node --watch server/index.ts --demo\" \"npm:dev:web\"",
     "dev:web": "vite --host 127.0.0.1 --port 5187 --strictPort",
     "start:api": "node --env-file-if-exists=.env server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "test": "node --test server/app.test.ts",
+    "test": "node --test server/*.test.ts",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1 --port 5187 --strictPort"
   },

@@ -14,7 +14,7 @@ npm.cmd run dev
 
 Open **http://127.0.0.1:5187**. The API listens on **http://127.0.0.1:3017**. Both bind to loopback only. Stop both with Ctrl+C. These ports allow the original playground to continue running separately.
 
-The grid, selection, filtering, sorting, gallery, and context inspector work immediately with 36 fictional orders. **No AI response is fabricated**: until a provider is configured, chat returns a visible `503 AI_NOT_CONFIGURED`.
+The grid, selection, filtering, sorting, gallery, and context inspector work immediately with 36 fictional orders. With no provider configured, AI requests return a visible `503 AI_NOT_CONFIGURED`; nothing is fabricated. For a no-account demo, run `npm.cmd run demo` from the repository root: it starts the same servers with `AI_PROVIDER=demo`, a clearly labeled local rule-based responder (`demo-rules`) that restates the supplied context and never contacts a service.
 
 ## Configure a real AI provider
 
@@ -46,6 +46,33 @@ OPENAI_API_KEY=
 
 API keys are optional only for loopback endpoints. Remote endpoints require HTTPS and a key. Model access, billing, network access, and provider quota remain your responsibility. A configured health indicator checks settings, not provider connectivity; submitting a question verifies the actual provider call.
 
+## Row summaries (any AI provider)
+
+Each grid row has a **Summary** action, modeled on Power Apps
+[row summaries](https://learn.microsoft.com/en-us/power-apps/user/record-summaries). It opens a dialog with an AI summary (paragraph plus bullets), **Copy**, **Refresh**, and feedback.
+
+The backend is provider-neutral: **JSON prompt in, JSON out**.
+
+1. `POST /api/summary` takes only `{ "rowId": "order-001" }`.
+2. The server builds a `RowSummaryContext` (table, column metadata, the record, and server-computed related facts) from its own data. [server/summary.ts](server/summary.ts) generates the **entire prompt from that context**; no prompt text comes from a config file, environment variable, or the browser.
+3. The prompt goes to the configured provider, which must answer with `{ "summary": string, "highlights": string[] }`. The reply is validated before it reaches the UI. Fenced or prose-wrapped JSON is tolerated.
+
+Choose the provider with `AI_PROVIDER` in `.env`. Only connection settings are configuration.
+
+| Target | `AI_PROVIDER` | `OPENAI_BASE_URL` | `AI_AUTH_SCHEME` |
+|---|---|---|---|
+| OpenAI | `openai-compatible` | `https://api.openai.com/v1` | `bearer` |
+| Azure AI Foundry / Azure OpenAI (v1 API) | `openai-compatible` | `https://<resource>.openai.azure.com/openai/v1` | `bearer` (Entra token) or `api-key` |
+| GitHub Models | `openai-compatible` | `https://models.github.ai/inference` | `bearer` |
+| Local (Ollama, LM Studio, vLLM) | `openai-compatible` | `http://127.0.0.1:11434/v1` | `none` |
+| Copilot or any custom gateway | `json-http` | the gateway URL | `bearer`, `api-key`, or `none` |
+| Offline demo (no model) | `demo` | not used | not used |
+
+`OPENAI_MODEL` is the model or deployment name sent to the provider. With `openai-compatible`, requests use `response_format: json_object` and retry once without it if a server rejects the field. With `json-http`, the server POSTs
+`{ "task", "model", "maxTokens", "messages", "responseSchema" }` to the URL as-is and expects the JSON answer as the response body (`task` is `row-summary` or `chat`; chat replies use `{ "answer": string }`). A Copilot-backed service can sit behind such a gateway.
+
+Row summaries send the selected record's field values and a few computed aggregates to the provider, unlike chat, which sends only aggregates. Review your provider's data policy first. Feedback (thumbs) is not persisted by the example.
+
 ## Try it
 
 1. Select one or more orders.
@@ -60,6 +87,9 @@ Each question is **single-turn**. Earlier answers remain visible locally but are
 
 ## What goes to the provider?
 
+- Row summaries: the one requested record's values plus server-computed customer, region, and overall aggregates (see above).
+- Chat, below, never includes raw rows:
+
 - Question and declared template parameter values.
 - Selected IDs, filters, sorting, and selection-truncation metadata.
 - Server-computed filtered and included-selection aggregates: counts, status counts, and USD totals.
@@ -73,7 +103,10 @@ Each question is **single-turn**. Earlier answers remain visible locally but are
 - [shared/contracts.ts](shared/contracts.ts): runtime API validation and shared types.
 - [server/data.ts](server/data.ts): fictional orders and prompt library.
 - [server/context.ts](server/context.ts): prompt validation and authoritative summaries.
-- [server/assistant.ts](server/assistant.ts): OpenAI-compatible provider call.
+- [server/assistant.ts](server/assistant.ts): chat call.
+- [server/provider.ts](server/provider.ts): provider adapters (OpenAI-compatible and JSON-over-HTTP).
+- [server/demo.ts](server/demo.ts): the offline demo responder.
+- [server/summary.ts](server/summary.ts): context-to-prompt builder and row-summary runner.
 - [server/config.ts](server/config.ts): environment validation.
 - [server/app.ts](server/app.ts): local HTTP API.
 - [prompt component source](../../packages/react-prompts/src/): the editable local package used by this example.
@@ -87,6 +120,7 @@ Each question is **single-turn**. Earlier answers remain visible locally but are
 | `GET /api/orders` | Fictional grid dataset |
 | `GET /api/prompts` | Saved prompt definitions |
 | `POST /api/chat` | Validate request, recompute context, invoke the configured provider |
+| `POST /api/summary` | Build a context-derived prompt for one row, return `{ summary, highlights }` |
 
 Errors use `{ "error": { "code": "...", "message": "..." } }`. Request bodies are limited to 64 KiB; the backend allows two active provider requests. Upstream error bodies are not exposed.
 

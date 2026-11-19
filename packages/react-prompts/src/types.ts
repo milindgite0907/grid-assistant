@@ -66,3 +66,23 @@ export type PromptGalleryModalProps = PromptSubmissionOptions & {
   prompts: readonly PromptDefinition[];
   onDismiss: () => void;
 };
+
+/** Provider-neutral summary of one row: a short paragraph plus optional bullets. */
+export type RowSummary = {
+  summary: string;
+  highlights?: readonly string[];
+  model?: string;
+  warning?: string;
+};
+
+export type RowSummaryFeedback = 'positive' | 'negative';
+
+export type RowSummaryDialogProps = {
+  open: boolean;
+  /** Names the summarized row, for example "Order order-001". */
+  title: string;
+  /** Called on open and on Refresh. The application owns the AI call; abort the request when `signal` aborts. */
+  loadSummary: (signal: AbortSignal) => Promise<RowSummary>;
+  onDismiss: () => void;
+  onFeedback?: (feedback: RowSummaryFeedback, summary: RowSummary) => void;
+};

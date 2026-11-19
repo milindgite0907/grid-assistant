@@ -1,6 +1,7 @@
 import type { ChatRequest, AssistantContext, Order } from '../shared/contracts.ts';
 import { orders, prompts } from './data.ts';
 import { ApiError } from './errors.ts';
+import type { RowSummaryContext } from './summary.ts';
 
 function totals(rows: readonly Order[]): AssistantContext['filtered'] {
   return {
@@ -30,6 +31,41 @@ export function validatePrompt(request: ChatRequest): void {
   if (parameters.some((entry) => entry.required && !request.parameters[entry.name]?.trim())) {
     throw new ApiError(400, 'MISSING_PARAMETER', 'Complete every required prompt parameter.');
   }
+}
+
+export function buildOrderSummaryContext(rowId: string): RowSummaryContext {
+  const order = orders.find((entry) => entry.id === rowId);
+  if (!order) throw new ApiError(404, 'ROW_NOT_FOUND', 'That order does not exist in the local dataset.');
+  const sameCustomer = orders.filter((entry) => entry.customer === order.customer);
+  const sameRegion = orders.filter((entry) => entry.region === order.region);
+  const average = (rows: readonly Order[]) => Math.round(rows.reduce((sum, entry) => sum + entry.amount, 0) / rows.length);
+  const largerCount = orders.filter((entry) => entry.amount > order.amount).length;
+  return {
+    table: { name: 'Orders', recordName: 'order', description: 'fictional sales orders; amounts are in USD' },
+    columns: [
+      { id: 'id', label: 'Order', type: 'text' },
+      { id: 'customer', label: 'Customer', type: 'text' },
+      { id: 'status', label: 'Status', type: 'choice' },
+      { id: 'region', label: 'Region', type: 'choice' },
+      { id: 'amount', label: 'Amount', type: 'currency', unit: 'USD' },
+    ],
+    record: { id: order.id, values: { ...order } },
+    related: [
+      {
+        label: `Orders from ${order.customer}`,
+        facts: { orderCount: sameCustomer.length, totalAmountUsd: sameCustomer.reduce((sum, entry) => sum + entry.amount, 0),
+          openCount: totals(sameCustomer).openCount, onHoldCount: totals(sameCustomer).onHoldCount },
+      },
+      {
+        label: `Orders in ${order.region}`,
+        facts: { orderCount: sameRegion.length, averageAmountUsd: average(sameRegion) },
+      },
+      {
+        label: 'All orders',
+        facts: { orderCount: orders.length, averageAmountUsd: average(orders), ordersWithLargerAmount: largerCount },
+      },
+    ],
+  };
 }
 
 export function buildAssistantContext(request: ChatRequest): AssistantContext {

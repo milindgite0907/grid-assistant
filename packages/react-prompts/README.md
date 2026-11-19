@@ -124,6 +124,28 @@ assistant. Optional `buildPromptMessage(text, parameters)` produces the legacy
 Do not parse that format for values containing commas or newlines; prefer the
 structured request.
 
+## Row summaries
+
+`RowSummaryDialog` is the grid counterpart of the Power Apps
+[row summary](https://learn.microsoft.com/en-us/power-apps/user/record-summaries):
+an inline **Summary** action opens a modal with an AI-generated paragraph and
+bullets, plus **Copy** (Markdown), **Refresh**, and thumbs up/down feedback.
+Like the other components it never calls an AI service; you supply `loadSummary`.
+
+```tsx
+<RowSummaryDialog
+  open={!!row}
+  title={`Order ${row?.id}`}
+  onDismiss={() => setRow(undefined)}
+  loadSummary={(signal) => fetchSummary(row.id, signal)} // resolves { summary, highlights? }
+  onFeedback={(value, summary) => saveFeedback(row.id, value)}
+/>
+```
+
+`loadSummary` runs on open and on every Refresh, and its `signal` aborts when the
+dialog closes. Render the trigger as a button in a grid column; see the
+[playground](../../examples/playground/README.md) for a provider-agnostic backend.
+
 ## Development
 
 This standalone repository uses npm workspaces. From the repository root:

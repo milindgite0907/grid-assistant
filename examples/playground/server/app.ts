@@ -1,12 +1,13 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { chatRequestSchema } from '../shared/contracts.ts';
-import type { Configuration } from './config.ts';
+import { chatRequestSchema, rowSummaryRequestSchema } from '../shared/contracts.ts';
+import type { AiConfig, Configuration } from './config.ts';
 import { orders, prompts } from './data.ts';
 import { ApiError } from './errors.ts';
-import { buildAssistantContext, validatePrompt } from './context.ts';
+import { buildAssistantContext, buildOrderSummaryContext, validatePrompt } from './context.ts';
 import { askAssistant } from './assistant.ts';
+import { summarizeRow } from './summary.ts';
 
 function json(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, {
@@ -41,6 +42,23 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 
 export function createApiServer(configuration: Configuration): Server {
   let activeRequests = 0;
+  const withSlot = async <T>(work: () => Promise<T>): Promise<T> => {
+    if (activeRequests >= 2) {
+      throw new ApiError(429, 'ASSISTANT_BUSY', 'The local assistant already has two active requests. Please retry.');
+    }
+    activeRequests += 1;
+    try {
+      return await work();
+    } finally {
+      activeRequests -= 1;
+    }
+  };
+  const requireAi = (config: Configuration): AiConfig => {
+    if (!config.ai) {
+      throw new ApiError(503, 'AI_NOT_CONFIGURED', `Configure ${config.missing.join(', ')} in the backend .env file, then restart the backend.`);
+    }
+    return config.ai;
+  };
   return createServer({ headersTimeout: 10_000, requestTimeout: 15_000 }, (request, response) => {
     const controller = new AbortController();
     response.on('close', () => controller.abort());
@@ -59,6 +77,7 @@ export function createApiServer(configuration: Configuration): Server {
           status: 'ok',
           configured: !!configuration.ai,
           model: configuration.model,
+          provider: configuration.provider,
           providerHost: configuration.providerHost,
           missing: configuration.missing,
         });
@@ -66,6 +85,18 @@ export function createApiServer(configuration: Configuration): Server {
         json(response, 200, orders);
       } else if (request.method === 'GET' && path === '/api/prompts') {
         json(response, 200, prompts);
+      } else if (request.method === 'POST' && path === '/api/summary') {
+        const parsed = rowSummaryRequestSchema.safeParse(await readJson(request));
+        if (!parsed.success) {
+          throw new ApiError(400, 'INVALID_REQUEST', parsed.error.issues.map((issue) =>
+            `${issue.path.join('.') || 'request'}: ${issue.message}`).join('; '));
+        }
+        const summaryContext = buildOrderSummaryContext(parsed.data.rowId);
+        const ai = requireAi(configuration);
+        const result = await withSlot(() => summarizeRow(ai, summaryContext, controller.signal));
+        if (!response.destroyed) {
+          json(response, 200, { id: randomUUID(), rowId: parsed.data.rowId, ...result, model: ai.model });
+        }
       } else if (request.method === 'POST' && path === '/api/chat') {
         const parsed = chatRequestSchema.safeParse(await readJson(request));
         if (!parsed.success) {
@@ -74,20 +105,10 @@ export function createApiServer(configuration: Configuration): Server {
         }
         validatePrompt(parsed.data);
         const context = buildAssistantContext(parsed.data);
-        if (!configuration.ai) {
-          throw new ApiError(503, 'AI_NOT_CONFIGURED', `Configure ${configuration.missing.join(', ')} in the backend .env file, then restart the backend.`);
-        }
-        if (activeRequests >= 2) {
-          throw new ApiError(429, 'ASSISTANT_BUSY', 'The local assistant already has two active requests. Please retry.');
-        }
-        activeRequests += 1;
-        try {
-          const result = await askAssistant(configuration.ai, parsed.data, context, controller.signal);
-          if (!response.destroyed) {
-            json(response, 200, { id: randomUUID(), ...result, context, model: configuration.ai.model });
-          }
-        } finally {
-          activeRequests -= 1;
+        const ai = requireAi(configuration);
+        const result = await withSlot(() => askAssistant(ai, parsed.data, context, controller.signal));
+        if (!response.destroyed) {
+          json(response, 200, { id: randomUUID(), ...result, context, model: ai.model });
         }
       } else {
         throw new ApiError(404, 'NOT_FOUND', 'API route not found.');

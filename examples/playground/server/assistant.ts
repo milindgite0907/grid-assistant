@@ -2,13 +2,7 @@ import { z } from 'zod';
 import type { ChatRequest, AssistantContext } from '../shared/contracts.ts';
 import type { AiConfig } from './config.ts';
 import { ApiError } from './errors.ts';
-
-const completionSchema = z.object({
-  choices: z.array(z.object({
-    message: z.object({ content: z.string().trim().min(1) }),
-    finish_reason: z.string().nullish(),
-  })).min(1),
-});
+import { parseChatCompletion, postJson, rejected, runJsonPrompt } from './provider.ts';
 
 const systemMessage = [
   'You are an assistant for a fictional order-grid testing application.',
@@ -21,58 +15,34 @@ const systemMessage = [
   'Each request is independent; do not assume access to earlier conversation turns.',
 ].join(' ');
 
+const chatAnswerSchema = z.object({ answer: z.string().trim().min(1) });
+
 export async function askAssistant(
   config: AiConfig,
   request: ChatRequest,
   context: AssistantContext,
   signal: AbortSignal,
 ): Promise<{ answer: string; warning?: string }> {
-  const providerSignal = AbortSignal.any([signal, AbortSignal.timeout(config.timeoutMs)]);
-  let response: Response;
-  try {
-    response = await fetch(config.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
-      },
-      signal: providerSignal,
-      body: JSON.stringify({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: JSON.stringify({ question: request.text, parameters: request.parameters, context }) },
-        ],
-      }),
-    });
-  } catch (error) {
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      throw new ApiError(504, 'PROVIDER_TIMEOUT', 'The assistant request timed out or was cancelled. Retry when ready.');
-    }
-    throw new ApiError(502, 'PROVIDER_UNREACHABLE', 'Unable to reach the configured AI endpoint. Check the backend configuration and network.');
-  }
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new ApiError(502, 'PROVIDER_REJECTED', `The AI provider returned HTTP ${response.status}. Check the model, endpoint, API key, and quota.`);
-  }
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    if (providerSignal.aborted) {
-      throw new ApiError(504, 'PROVIDER_TIMEOUT', 'The assistant request timed out or was cancelled. Retry when ready.');
-    }
-    throw new ApiError(502, 'INVALID_PROVIDER_RESPONSE', 'The AI provider returned invalid JSON.');
-  }
-  const parsed = completionSchema.safeParse(body);
-  if (!parsed.success) {
-    throw new ApiError(502, 'INVALID_PROVIDER_RESPONSE', 'The AI provider did not return a non-empty chat completion.');
+  const messages = [
+    { role: 'system' as const, content: systemMessage },
+    { role: 'user' as const, content: JSON.stringify({ question: request.text, parameters: request.parameters, context }) },
+  ];
+  let answer: string;
+  let truncated = false;
+  if (config.provider !== 'openai-compatible') {
+    const result = await runJsonPrompt(config, {
+      task: 'chat', messages, responseSchema: { type: 'object', required: ['answer'], properties: { answer: { type: 'string' } } },
+    }, signal);
+    const parsed = chatAnswerSchema.safeParse(result.output);
+    if (!parsed.success) throw new ApiError(502, 'INVALID_PROVIDER_RESPONSE', 'The AI provider did not return a non-empty answer.');
+    answer = parsed.data.answer;
+  } else {
+    const result = await postJson(config, { model: config.model, max_tokens: config.maxTokens, messages }, signal);
+    if (result.body === undefined) throw rejected(result.status);
+    ({ text: answer, truncated } = parseChatCompletion(result.body));
   }
   return {
-    answer: parsed.data.choices[0].message.content,
-    ...(parsed.data.choices[0].finish_reason === 'length'
-      ? { warning: 'The answer reached the configured output-token limit and may be incomplete.' }
-      : {}),
+    answer,
+    ...(truncated ? { warning: 'The answer reached the configured output-token limit and may be incomplete.' } : {}),
   };
 }

@@ -1,7 +1,9 @@
 import { createApiServer } from './app.ts';
 import { loadConfiguration } from './config.ts';
 
-const configuration = loadConfiguration();
+const configuration = loadConfiguration(process.argv.includes('--demo')
+  ? { ...process.env, AI_PROVIDER: 'demo' }
+  : process.env);
 const server = createApiServer(configuration);
 server.on('error', (error) => {
   console.error('Backend failed to start:', error.message);
