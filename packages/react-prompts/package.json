@@ -1,0 +1,43 @@
+{
+  "name": "@fluentui-contrib/react-prompts",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --config jest.config.cjs --runInBand",
+    "test:components": "playwright test --config playwright.config.ts",
+    "storybook": "storybook dev --host 127.0.0.1 --port 6006 --disable-telemetry"
+  },
+  "dependencies": {
+    "@swc/helpers": "~0.5.11"
+  },
+  "peerDependencies": {
+    "@fluentui/react-components": ">=9.70.0 <10.0.0",
+    "@fluentui/react-icons": ">=2.0.204 <3.0.0",
+    "@types/react": ">=16.8.0 <20.0.0",
+    "react": ">=16.8.0 <20.0.0"
+  },
+  "devDependencies": {
+    "@fluentui-contrib/react-data-grid-react-window": "file:../../vendor/fluentui-contrib-react-data-grid-react-window-1.4.2.tgz",
+    "@fluentui/react-components": "9.70.0",
+    "@fluentui/react-icons": "^2.0.249",
+    "@playwright/experimental-ct-react": "1.56.1",
+    "@storybook/react-vite": "8.6.14",
+    "@swc/core": "^1.11.24",
+    "@swc/jest": "^0.2.39",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^29.5.14",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "storybook": "8.6.14"
+  }
+}

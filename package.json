@@ -1,0 +1,31 @@
+{
+  "name": "grid-assistant",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "examples/*"],
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "dev": "npm run dev --workspace=fluentui-prompts-playground",
+    "build": "npm run build --workspace=@fluentui-contrib/react-prompts && npm run build --workspace=fluentui-prompts-playground",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint packages examples",
+    "storybook": "npm run storybook --workspace=@fluentui-contrib/react-prompts",
+    "test:components": "npm run test:components --workspace=@fluentui-contrib/react-prompts",
+    "test:e2e": "npm run test:e2e --workspace=fluentui-prompts-playground"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@types/node": "^22.15.0",
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.0",
+    "eslint": "^9.25.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.30.1"
+  }
+}
